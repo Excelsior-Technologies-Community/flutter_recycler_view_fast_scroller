@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 class CustomFastScroller extends StatefulWidget {
   final Widget child;
   final ScrollController controller;
+
   final double thumbWidth;
   final double thumbHeight;
   final Color thumbColor;
   final Color trackColor;
+  final double radius;
+  final bool alwaysVisible;
 
   const CustomFastScroller({
     super.key,
@@ -16,6 +19,8 @@ class CustomFastScroller extends StatefulWidget {
     this.thumbHeight = 60,
     this.thumbColor = Colors.blue,
     this.trackColor = Colors.grey,
+    this.radius = 8,
+    this.alwaysVisible = true,
   });
 
   @override
@@ -25,28 +30,44 @@ class CustomFastScroller extends StatefulWidget {
 class _CustomFastScrollerState extends State<CustomFastScroller> {
   double _thumbTop = 0;
   bool _isDragging = false;
+  bool _isVisible = true;
 
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_syncThumbWithScroll);
+    widget.controller.addListener(_syncThumbPosition);
   }
 
-  void _syncThumbWithScroll() {
-    if (!_isDragging && widget.controller.hasClients) {
+  void _syncThumbPosition() {
+    if (!widget.controller.hasClients) return;
+
+    if (!_isDragging) {
       final maxScroll = widget.controller.position.maxScrollExtent;
       final currentScroll = widget.controller.offset;
+
+      if (maxScroll == 0) return;
+
+      final trackHeight = context.size?.height ?? 0;
       final scrollRatio = currentScroll / maxScroll;
 
-      final trackHeight = context.size?.height ?? 1;
       setState(() {
         _thumbTop = scrollRatio * (trackHeight - widget.thumbHeight);
       });
     }
+
+    if (!widget.alwaysVisible) {
+      setState(() => _isVisible = true);
+
+      Future.delayed(const Duration(seconds: 1), () {
+        if (!_isDragging) {
+          setState(() => _isVisible = false);
+        }
+      });
+    }
   }
 
-  void _onDragUpdate(DragUpdateDetails details) {
-    final trackHeight = context.size?.height ?? 1;
+  void _handleDragUpdate(DragUpdateDetails details) {
+    final trackHeight = context.size?.height ?? 0;
 
     setState(() {
       _isDragging = true;
@@ -57,20 +78,23 @@ class _CustomFastScrollerState extends State<CustomFastScroller> {
         _thumbTop = trackHeight - widget.thumbHeight;
       }
 
-      final scrollRatio = _thumbTop / (trackHeight - widget.thumbHeight);
-      final maxScroll = widget.controller.position.maxScrollExtent;
+      final scrollRatio =
+          _thumbTop / (trackHeight - widget.thumbHeight);
+
+      final maxScroll =
+          widget.controller.position.maxScrollExtent;
 
       widget.controller.jumpTo(scrollRatio * maxScroll);
     });
   }
 
-  void _onDragEnd(DragEndDetails details) {
+  void _handleDragEnd(DragEndDetails details) {
     _isDragging = false;
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_syncThumbWithScroll);
+    widget.controller.removeListener(_syncThumbPosition);
     super.dispose();
   }
 
@@ -83,33 +107,41 @@ class _CustomFastScrollerState extends State<CustomFastScroller> {
             widget.child,
 
             /// Track
-            Positioned(
-              right: 2,
-              top: 0,
-              bottom: 0,
-              child: Container(
-                width: widget.thumbWidth,
-                color: widget.trackColor.withOpacity(0.2),
-              ),
-            ),
-
-            /// Thumb
-            Positioned(
-              right: 2,
-              top: _thumbTop,
-              child: GestureDetector(
-                onVerticalDragUpdate: _onDragUpdate,
-                onVerticalDragEnd: _onDragEnd,
+            if (_isVisible)
+              Positioned(
+                right: 2,
+                top: 0,
+                bottom: 0,
                 child: Container(
                   width: widget.thumbWidth,
-                  height: widget.thumbHeight,
                   decoration: BoxDecoration(
-                    color: widget.thumbColor,
-                    borderRadius: BorderRadius.circular(8),
+                    color: widget.trackColor.withOpacity(0.2),
+                    borderRadius:
+                    BorderRadius.circular(widget.radius),
                   ),
                 ),
               ),
-            ),
+
+            /// Thumb
+            if (_isVisible)
+              Positioned(
+                right: 2,
+                top: _thumbTop,
+                child: GestureDetector(
+                  onVerticalDragUpdate: _handleDragUpdate,
+                  onVerticalDragEnd: _handleDragEnd,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: widget.thumbWidth,
+                    height: widget.thumbHeight,
+                    decoration: BoxDecoration(
+                      color: widget.thumbColor,
+                      borderRadius:
+                      BorderRadius.circular(widget.radius),
+                    ),
+                  ),
+                ),
+              ),
           ],
         );
       },
